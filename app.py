@@ -14,7 +14,8 @@ class SmokyFluidSimulator:
         self.dt = 0.08
         self.diff = 0.0001  # Higher diffusion for smoke spread
         self.visc = 0.0000005  # Very low viscosity for wispy movement
-        self.vorticity_strength = 0.15  # Lower for gentler swirls
+        self.vorticity_strength = 0.4  # Increased for more natural turbulent eddies
+        self.turbulence_mode = False
 
         # Velocity fields
         self.u = np.zeros((height, width), dtype=np.float32)
@@ -197,7 +198,7 @@ class SmokyFluidSimulator:
 
     def add_turbulence(self):
         # Subtle random turbulence for organic smoke movement
-        noise_strength = 0.02
+        noise_strength = 0.05 if self.turbulence_mode else 0.02
         noise_u = (
             np.random.random((self.height, self.width)).astype(np.float32) - 0.5
         ) * noise_strength
@@ -328,17 +329,41 @@ def main():
             g = g * (1 - gray) + 0.8 * gray
             b = b * (1 - gray) + 0.8 * gray
 
-            # Larger, softer brush for smoke
-            sim.add_density_colored(x, y, 60, r, g, b, radius=12)
+            # FIX: Reduced sensitivity - smaller radius and amount
+            # Original: sim.add_density_colored(x, y, 60, r, g, b, radius=12)
+            sim.add_density_colored(x, y, 20, r, g, b, radius=6)
 
-            # Gentler velocity for smoke-like movement
-            sim.add_velocity(x, y, dx * 6, dy * 6)
+            # FIX: Gentler velocity for smoke-like movement
+            # Original: sim.add_velocity(x, y, dx * 6, dy * 6)
+            sim.add_velocity(x, y, dx * 3, dy * 3)
 
         sim.prev_mouse_x = x
         sim.prev_mouse_y = y
 
+    def key_callback(window, key, scancode, action, mods):
+        if action == glfw.PRESS:
+            if key == glfw.KEY_1:
+                # Capture image1.png
+                data = sim.get_texture_data()
+                # Need to flip vertically because OpenGL coords are bottom-up
+                from PIL import Image
+                img = Image.fromarray(np.flipud(data))
+                img.save("image1.png")
+                print("Snapshot saved as image1.png")
+            elif key == glfw.KEY_2:
+                # Capture image2.png
+                data = sim.get_texture_data()
+                from PIL import Image
+                img = Image.fromarray(np.flipud(data))
+                img.save("image2.png")
+                print("Snapshot saved as image2.png")
+            elif key == glfw.KEY_T:
+                sim.turbulence_mode = not sim.turbulence_mode
+                print(f"Turbulence Mode: {'ON' if sim.turbulence_mode else 'OFF'}")
+
     glfw.set_mouse_button_callback(window, mouse_button_callback)
     glfw.set_cursor_pos_callback(window, cursor_position_callback)
+    glfw.set_key_callback(window, key_callback)
 
     glEnable(GL_TEXTURE_2D)
     glEnable(GL_BLEND)
@@ -370,6 +395,8 @@ def main():
     print("=" * 60)
     print("Controls:")
     print("  LEFT CLICK + DRAG: Create smoke & flow")
+    print("  KEY '1' & '2'    : Take snapshots")
+    print("  KEY 'T'          : Toggle Turbulence Mode")
     print("=" * 60)
 
     frame_count = 0

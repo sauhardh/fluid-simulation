@@ -14,7 +14,8 @@ class OptimizedFluidSimulator:
         self.dt = 0.1
         self.diff = 0.00001
         self.visc = 0.000001
-        self.vorticity_strength = 0.25
+        self.vorticity_strength = 0.4  # Increased for more natural turbulent eddies
+        self.turbulence_mode = False
 
         # Velocity fields
         self.u = np.zeros((height, width), dtype=np.float32)
@@ -187,6 +188,21 @@ class OptimizedFluidSimulator:
         self.u += self.vorticity_strength * self.grad_y * self.curl * self.dt
         self.v += -self.vorticity_strength * self.grad_x * self.curl * self.dt
 
+    def add_turbulence(self):
+        # Noise strength depends on toggle
+        noise_strength = 0.05 if self.turbulence_mode else 0.01
+        noise_u = (
+            np.random.random((self.height, self.width)).astype(np.float32) - 0.5
+        ) * noise_strength
+        noise_v = (
+            np.random.random((self.height, self.width)).astype(np.float32) - 0.5
+        ) * noise_strength
+
+        # Add turbulence where there is density
+        mask = (self.density_r + self.density_g + self.density_b) > 0.1
+        self.u += noise_u * mask
+        self.v += noise_v * mask
+
     def apply_buoyancy(self):
         temp_diff = self.temperature - self.ambient_temp
         self.v += temp_diff * self.buoyancy * self.dt
@@ -196,6 +212,7 @@ class OptimizedFluidSimulator:
         self.time += self.dt
 
         self.apply_buoyancy()
+        self.add_turbulence()
 
         # Velocity step
         self.diffuse(1, self.u_prev, self.u, self.visc, self.dt)
@@ -297,21 +314,40 @@ def main():
             r, g, b = colorsys.hsv_to_rgb(sim.color_hue, 0.9, 1.0)
 
             # Optimized brush size
-            for i in range(-5, 6):
-                for j in range(-5, 6):
+            for i in range(-3, 4):
+                for j in range(-3, 4):
                     dist = np.sqrt(i * i + j * j)
-                    if dist < 5:
-                        strength = (1.0 - dist / 5.0) * 100
+                    if dist < 3:
+                        strength = (1.0 - dist / 3.0) * 30
                         sim.add_density_colored(x + j, y + i, strength, r, g, b)
 
             # Add velocity
-            sim.add_velocity(x, y, dx * 12, dy * 12)
+            sim.add_velocity(x, y, dx * 6, dy * 6)
 
         sim.prev_mouse_x = x
         sim.prev_mouse_y = y
 
+    def key_callback(window, key, scancode, action, mods):
+        if action == glfw.PRESS:
+            if key == glfw.KEY_1:
+                data = sim.get_texture_data()
+                from PIL import Image
+                img = Image.fromarray(np.flipud(data))
+                img.save("image1_main.png")
+                print("Snapshot saved as image1_main.png")
+            elif key == glfw.KEY_2:
+                data = sim.get_texture_data()
+                from PIL import Image
+                img = Image.fromarray(np.flipud(data))
+                img.save("image2_main.png")
+                print("Snapshot saved as image2_main.png")
+            elif key == glfw.KEY_T:
+                sim.turbulence_mode = not sim.turbulence_mode
+                print(f"Turbulence Mode: {'ON' if sim.turbulence_mode else 'OFF'}")
+
     glfw.set_mouse_button_callback(window, mouse_button_callback)
     glfw.set_cursor_pos_callback(window, cursor_position_callback)
+    glfw.set_key_callback(window, key_callback)
 
     # OpenGL setup with better blending
     glEnable(GL_TEXTURE_2D)
@@ -330,6 +366,8 @@ def main():
     print("=" * 60)
     print("Controls:")
     print("  LEFT CLICK + DRAG: Create fluid & flow")
+    print("  KEY '1' & '2'    : Take snapshots")
+    print("  KEY 'T'          : Toggle Turbulence Mode")
     print("=" * 60)
 
     # FPS counter
